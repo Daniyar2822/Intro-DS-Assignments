@@ -1,0 +1,202 @@
+---
+title: "Assignment 1 - The tidyverse"
+author: "Daniyar Imanaliev"
+date: "`r format(Sys.time(), '%B %d, %Y | %H:%M:%S | %Z')`"
+output:
+  html_document:
+    code_folding: show
+    df_print: paged
+    highlight: tango
+    number_sections: no
+    theme: cosmo
+    toc: no
+---
+  
+<style>
+div.answer {background-color:#f3f0ff; border-radius: 5px; padding: 20px;}
+</style>
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      eval = TRUE,
+                      error = FALSE,
+                      message = FALSE,
+                      warning = FALSE,
+                      comment = NA)
+```
+
+<!-- Do not forget to input your Github username in the YAML configuration up there --> 
+
+Daniyar2822
+
+```{r, include = T}
+library(legislatoR)
+library(tibble)
+library(tidyverse)
+library(dplyr)
+library(eeptools)
+
+```
+
+<br>
+
+### Getting started with the Comparative Legislators Database
+
+The Comparative Legislators Database (CLD) includes political, sociodemographic, career, online presence, public attention, and visual information for over 45,000 contemporary and historical politicians from ten countries (see the [corresponding article](https://www.cambridge.org/core/journals/british-journal-of-political-science/article/comparative-legislators-database/D28BB58A8B2C08C8593DB741F42C18B2) for more information). It can be accessed via `legislatoR` - an R package that is available on both [CRAN](https://cran.r-project.org/web/packages/legislatoR/index.html) and [GitHub](https://github.com/saschagobel/legislatoR).
+
+Before you start with the following tasks, skim the tutorial to make yourself familiar with the database. You find it [here](https://cran.r-project.org/web/packages/legislatoR/vignettes/legislatoR.html).
+
+For the following tasks, you will work with ONE of the legislatures. The legislature you'll work with depends on your first name:
+
+| Your first name starts with... | Legislature | Code |
+|---------|-------|-------|
+| A-C | Austrian Nationalrat | `aut` |
+| D-F | Canadian House of Commons | `can` |
+| G-I | Czech Poslanecka Snemovna | `cze` |
+| J-L | Spanish Congreso de los Diputados | `esp` |
+| M-O | French Assemblée | `fra` |
+| P-R | German Bundestag | `deu` |
+| S-U | Irish Dail | `irl` |
+| V-X | UK House of Commons | `gbr` |
+| Y-Z | US House of Representatives  | `usa_house` |
+
+The following tasks will be based on data from the `core` and `political` tables of the database.
+
+<br>
+
+***
+
+### Task 1 - Descriptives
+
+a) What's the overall share of female legislators in the entire dataset?
+
+```{r}
+can_core <- get_core(legislature = 'can')
+table(can_core$sex)
+gend <- data.frame(table(can_core$sex))
+fem_share <- (gend$Freq[1] / gend$Freq[2]) * 100
+fem_share <- round(fem_share, digits = 2)
+cat("Overall share of women is:", fem_share, '%')
+```
+
+b) How many (both in absolute and relative terms) legislators died in the same place they were born in?
+
+```{r}
+same_place <- data.frame(table(can_core$birthplace == can_core$deathplace))
+num_names <- length(can_core$name)
+same_place_num <- same_place$Freq[2]
+cat("Absolute number of legislators died in the same place:", same_place_num)
+```
+
+
+```{r}
+
+same_place_per <- same_place$Freq[2]/num_names * 100
+same_place_per <- round(same_place_per, digits = 2)
+cat("Relative number of legislators died in the same place:", same_place_per, "%")
+```
+
+c) Create a new variable `age_at_death` that reports the age at which legislators died. Then, plot the distribution of that variable for the entire dataset.
+
+```{r}
+can_core$birth <- as.Date(can_core$birth) #switch to date format
+can_core$death <- as.Date(can_core$death) #switch to date format
+can_core2 <- data.frame(can_core) #creating standalone dataframe for manipulations
+sum(is.na(can_core2$birth)) #counting NA values
+sum(is.na(can_core2$death)) #counting NA values
+can_core2 <- can_core2 %>% drop_na(death) #removing NA values from death column
+can_core2 <- can_core2 %>% drop_na(birth) #removing NA values from birth column
+can_core2$age_at_death <- age_calc(can_core2$birth, can_core2$death, units = 'years') #calculating age
+can_core2$age_at_death <- floor(can_core2$age_at_death) # takes single numeric argument for creating plot
+ggplot(can_core2, aes(x=age_at_death)) + geom_histogram(color="black", fill="blue",  binwidth=5) +
+  labs(x = "Age of Canadian MPs at Death", y = "Number of MPs", title = "Canadian MPs Lifetime")
+```
+
+d) What is the most frequent birthday in your sample (e.g., “January 15")?
+
+```{r}
+can_core$birthday <- can_core$birth #creating separate column "birthday"
+can_core$birthday <- format(can_core$birthday, format="%m-%d") #modifying format removing years
+table(can_core$birthday) #creating table from dataframe with birthdays only
+most_frq_bd <- names(which.max(table(can_core$birthday))) #identifying the most frequent date of birth
+cat("the most frequent birthday is:", most_frq_bd, "but it shall be noted that 01-01 is used when date of birth unknown or missed")
+
+
+```
+
+e) Generate a table that provides the 5 legislators with the longest names (in terms of number of characters, ignoring whitespace). 
+
+```{r}
+can_core$name_len <- nchar(gsub(" ", "", can_core$name)) #creating column counting length of names ignoring whitespace
+top_names <- can_core %>%  #creating the object with ranging of names by its length
+  arrange(desc(name_len)) %>%
+  slice(1:5)
+top_names = subset(top_names, select = c(name, name_len)) #creating subset for presenting table with findings
+top_names
+
+```
+
+<br>
+
+***
+
+### Task 2 - Exploring trends in the data 
+
+a) Using data from all sessions, provide a plot that shows the share of female legislators by session! 
+
+```{r}
+can_pol <- get_political(legislature = "can") #getting data from political dataset
+colnames(can_core) #checking same variables
+colnames(can_pol) 
+can_core4 <- can_core %>% select (pageid, name, sex) #putting only required variables from the core dataset  
+can_core_pol <- full_join(can_core4, can_pol, by = "pageid") #merging two datasets 
+can_sex_ses <- data.frame(sex = can_core_pol$sex, session = can_core_pol$session) #creating separate dataframe for building plots
+ggplot(data = can_sex_ses, aes(x = session, fill = sex)) + geom_bar(position = "fill")
+can_sex_ses <- can_sex_ses %>% drop_na(sex) #removing blank data
+ggplot(data = can_sex_ses, aes(x = session, fill = sex)) + geom_bar(position = "fill") +
+  labs(x = "Session", y = "Proportion of MPs Gender", title = "Change of Gender Proportion in Canadian HoC")
+```
+
+b) Explore another relation of variables in the dataset. Your analysis should (i) use data from both the `core` and the `political` table and (ii) feature data from several sessions. Also, offer a brief description and interpretation of your findings! 
+
+```{r}
+can_single_set <- full_join(can_core, can_pol, by = "pageid") #creating single dataset 
+sum(is.na(can_single_set$ethnicity))
+ethn_mp <- data.frame(ethn = can_single_set$ethnicity, sess = can_single_set$session)
+ggplot(data = ethn_mp, aes(x = sess, fill = ethn)) + geom_bar() + labs(x = "Session", y = "Number of MPs per Ethnicity", title = "Ethniс Composition of Canadian MPs per Each Session")
+
+#Due to high percent of blank values for ethnicity variable, using of absolute and relative values is not appropriate since it may lead to incorrect findings and interpretation
+
+```
+
+
+```{r}
+ethn_mp_2 <- filter(ethn_mp,na.rm = TRUE)
+ethn_mp_2 <- ethn_mp_2 %>% drop_na("ethn")
+ggplot(data = ethn_mp_2, aes(x = sess, y = ethn, group = ethn, color = ethn)) + 
+  geom_line() + geom_point() + labs(
+    title = "Presense of Ethnic Groups in Canadian House of Commons",
+    x = "Session",
+    y = "Ethnic Group")
+
+#Accordingly, the line plot showing presence of particular ethnic group in parliament session has been used
+
+```
+
+
+
+<div class = "answer">
+The line plot above showed presense of various ethnic group in session of Canadian House of Commons.
+It is worth to note that mainly white ethnic group was represented during first parliament sessions, and other groups were underrepresented.
+However, this situation changed significantly, and from around 25th session and later, members of parliament from different ethnic groups participated in sessions. It means that there were significant shift in diversity of parliament representation in Canada.
+
+
+
+</div>
+
+<br>
+
+***
+
+
+
