@@ -1,0 +1,442 @@
+---
+title: "America's Political Divide – from Map to Web"
+output: 
+  flexdashboard::flex_dashboard:
+    heading_font:
+      google: Sen
+    orientation: columns
+    vertical_layout: fill
+runtime: shiny
+
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(tidyverse)
+library(shiny)
+library(DT)
+library(colorRamps)
+library(usmap)
+library(haven)
+tracking <- readRDS('tracking/meof_usa_web_df.RDS')
+survey <- readRDS('survey/meof_usa_survey_df.RDS')
+
+```
+
+Background
+====
+
+#### 
+In this captivating journey, we traverse maps, plots, and digital landscapes, unraveling the intricate tapestry of America's political divide. It's not just data; it's a narrative of a nation in flux, from maps to webs, reflecting the complex dynamics that shape the political landscape.  
+At the heart of our inquiry lies a profound question: How does geography and online exposure contribute to shaping partisan sentiments in the United States?  
+
+*Data Journey*:  
+
+Our exploration begins with a treasure trove of Browser data, capturing the digital footprints of American citizens aged 18 and above with internet access, from April 23, 2018, to October 15, 2019, within the United States. Complementing this, the Media Exposure and Opinion Formation (MEOF) study, unveils the nuances of political attitudes, behaviors, knowledge, and online media consumption among US citizens. This invaluable dataset, along with passive metering technology capturing real-time web visits and mobile app use, forms the foundation of our investigation. For accessing and citing this wealth of information, please refer to http://dx.doi.org/10.4232/1.13981. Kudos to the architects of this study: Munzert, Simon; Barberá, Pablo; Guess, Andrew M.; Yang, JungHwan (2022).  
+
+*Methodological Marvels*:  
+
+Navigating through the data labyrinth,  we harnessed the power of the geom_smooth function in R to unveil patterns and nuances. Employing Generalized Additive Models (GAM) the conventional Generalized Linear Models (GLM), we navigated non-Gaussian error structures. This sophisticated approach, rooted in the family of models estimated by a quadratically penalized likelihood type approach, elegantly presented trends and uncertainties in a concise and insightful manner.  
+
+*User Guide*:  
+
+Please feel free to navigate through our paper as if it was a website. Browse through all tabs, read background on the left and  select charts to the right.  
+
+
+Map
+====
+Column 
+----
+
+### Report
+
+#### MAP
+Our journey commences with three insightful maps.  
+
+*Map 1.1 Swing States*:  
+
+The first, focusing on swing states, utilizes election data to identify states where the margin between Republican and Democratic parties was less than 3%. These pivotal states hold the potential to sway the political balance.  
+
+*Map 1.2 Cook Partisan Voting Index (CPVI)*:  
+
+The second map employs the CPVI from 2018 , indicating the percentage point difference between the two major parties from the average of the last two presidential elections.  (https://www.cookpolitical.com/cook-pvi ) Translating this into a real number scale, we position Democrats on the left and Republicans on the right, offering a visual representation of political leanings.  
+
+*Map 1.3 Preferences of the Divided Congress*:  
+
+Our third map delves into the preferences of respondents regarding the control of Congress before the 2018 Midterm elections. Intriguingly, people in swing states predominantly preferred a divided Congress between the Senate and the House of Representatives, highlighting the unique dynamics at play.  
+
+
+
+
+
+
+Column {.tabset .tabset-fade}
+----
+
+### Swing State
+
+
+```{r}
+
+cpvi <- read.csv("cook2021.csv")
+cpvi2 <- read.csv("cpvi.csv")
+
+cpvi2 <- cpvi2 %>% 
+  mutate(swing_state = lean_transformed >= -3 & lean_transformed <= 3)
+
+cpvi <- cpvi %>% 
+  mutate(swing_state = number >= -3 & number <= 3)
+dfs <- readRDS("./survey/meof_usa_survey_df.RDS")
+dfs2 <- dfs |>
+  left_join(cpvi, by = "inputstate")
+
+df_cong_cont <- data.frame(state = dfs2$state, des_cong = dfs2$congress_control_preference)
+
+df_cong_cont <- na.omit(df_cong_cont)
+
+df_mean <- df_cong_cont %>%
+  group_by(state) %>%
+  summarise(mean_1 = mean(des_cong == 1),
+            mean_2 = mean(des_cong == 2),
+            mean_3 = mean(des_cong == 3),
+            mean_4 = mean(des_cong == 4))
+
+#Map 1. Swing States
+
+plot_usmap(data = cpvi, regions = "states", values = "swing_state") +
+  labs(subtitle = "Swing states according to the US Election Results",
+       fill = "Swing states") +
+  scale_fill_hue(labels = c("No", "Yes"))
+
+```
+
+```{r}
+
+```
+
+### Cook PVI
+
+
+
+```{r}
+#Map 2. Cook Index
+centroid_labels <- usmapdata::centroid_labels("states")
+data_labels <- merge(centroid_labels, cpvi2, by.x = "full", by.y = "state")
+
+plot_usmap(data = cpvi2, regions = 'states', values = "lean_transformed") +
+  scale_fill_gradientn(colours = matlab.like(5)) + 
+  #geom_text(data = data_labels, ggplot2::aes(
+    #x = x, y = y,
+    #label = scales::number(lean_transformed)
+  #), color = "black") +
+  labs(subtitle = str_wrap("Swing States under the Cook Partisan Voting Index Report"),
+       fill = "Cook PVI") 
+```
+
+### Choice of divided congress 
+
+```{r}
+  plot_usmap(data = df_mean, regions = "states", values = "mean_3") +
+  scale_fill_gradientn(colours = topo.colors(10)) + 
+  labs(subtitle = str_wrap("Share of Respondents preferring that control of Congress will be divided between House and Senate"),
+       fill = "Share")  
+
+
+```
+
+
+States
+====
+
+Column {}
+----
+
+### Report 
+
+#### States
+
+*Plot 1: Feeling Thermometer toward Politicians*  
+
+The displayed plot compares CPVI of the home state for every survey respondent with their “Feeling Thermometer” response of favorability (0-100) for six prominent political figures, three Democrats and three Republicans, represented by a smoothed conditional mean line.  
+On the Democrat side, Joe Biden, the most centrist of the three, shows a more gradual decline in positive feelings as home states become increasingly Republican partisan as expected. Nancy Pelosi is the most polarizing, even more so than the more liberal Alexandria Ocasio-Cortez, perhaps due to Speaker Pelosi’s prominence and longevity.  
+For the Republicans, the then president Donald Trump shows the most favorability on one’s partisan side. Mitt Romney’s moderate perception stands out with an almost even favorability score across CPVI values.  
+At a neutral CPVI, all Democrat politicians are more favorable than President Trump, which may be a reflection of his polarizing administration in general and the impeachment proceedings of the time.  
+
+*Plot 2: Politics in the Home*  
+
+Political preference hits home literally when your son or daughter marries someone from the opposing political party. The differences are clearly marked in this plot with a Donald Trump supporter an even worse proposition than a Republican supporter among Democrats.   
+
+
+
+Column  {.tabset .tabset-fade}
+----
+
+### Feeling Thermometer towards Politicians
+
+```{r}
+cpvi <- read.csv("cpvi.csv") |>
+  rename(cpvi_tr = lean_transformed)
+
+#Left join to combine CPVI with states
+dfs2 <- survey |>
+  left_join(cpvi, by = "inputstate") |>
+  filter(!is.na(cpvi_tr))
+
+```
+
+```{r}
+selectInput(
+  inputId = "candidate",
+  label = "Choose Politician",
+  choices = c( "Cortez" = 'option1',
+               "Pelosi"= 'option2',
+               "Biden"= 'option3',
+               "Trump" = 'option4',
+               "Romney" = "option5",
+               "McConnell" = "option6")
+)
+```
+
+```{r}
+#candidates
+
+renderPlot({
+  choices <- paste("option",1:6,sep="")
+  custom_alpha <- rep(0.2,6)
+  custom_alpha[which(choices==input$candidate)] <- 0.8
+  dfs2 |>
+  ggplot(aes(x = cpvi_tr, show.legend = T)) +
+  geom_smooth(method = 'gam', aes(y = feeling_ocasiocortez),color=alpha('blue',custom_alpha[1]),alpha=custom_alpha[1], show.legend = TRUE) +
+  geom_smooth(method = 'gam', aes(y = feeling_pelosi),color=alpha('red',custom_alpha[2]),alpha=custom_alpha[2], show.legend = TRUE) +
+  geom_smooth(method = 'gam', aes(y = feeling_biden),color=alpha('orange',custom_alpha[3]),alpha=custom_alpha[3], show.legend = TRUE) +
+  geom_smooth(method = 'gam', aes(y = feeling_trump), color=alpha('purple',custom_alpha[4]),alpha=custom_alpha[4],show.legend = TRUE) +
+  geom_smooth(method = 'gam', aes(y = feeling_romney),color=alpha('green',custom_alpha[5]),alpha=custom_alpha[5], show.legend = TRUE) +
+  geom_smooth(method = 'gam', aes(y = feeling_mcconnell),color=alpha('black',custom_alpha[6]),alpha=custom_alpha[6], show.legend = TRUE) +
+  labs(
+       x = "CPVI (-D, +R)",
+       y = "Feeling Thermometer (0-100) Conditional Mean",
+       color = "Politican Legend")
+  },height=500, width = 600)
+
+
+```
+
+### Affective Polarization / Politics at home 
+
+```{r}
+selectInput(
+  inputId = "partisan",
+  label = "Choose type of supporters",
+  choices = c( "Democrat supporter" = 'option1',
+               "Republican"= 'option2',
+               "Trump supporter"= 'option3')
+)
+```
+
+
+```{r}
+renderPlot({
+choices <- paste("option",1:3,sep="")
+custom_alpha <- rep(0.2,3)
+custom_alpha[which(choices==input$partisan)] <- 0.8
+dfs2 |>
+  ggplot(aes(x = cpvi_tr, show.legend = T)) +
+  geom_smooth(method = 'gam', aes(y = soc_distance_dem/7*100),color=alpha('blue',custom_alpha[1]), alpha=custom_alpha[1]) +
+  geom_smooth(method = 'gam', aes(y = soc_distance_rep/7*100),color=alpha('red',custom_alpha[2]),alpha=custom_alpha[2]) +
+  geom_smooth(method = 'gam', aes(y = soc_distance_trump_supporters/7*100),color=alpha('green',custom_alpha[3]),alpha=custom_alpha[3]) +
+  labs(title = "Affective Polarization",
+       subtitle = "vs, Cook Partisan Voting Index (CPVI)",
+       x = "CPVI (-D, +R)",
+       y = "Unhappiness of son/daughter marrying ... (0-100)",
+       color = "Supporter Legend")
+},height=500, width = 600)
+
+```
+
+
+Web
+====
+
+Column {}
+----
+
+### Report 
+
+
+#### WEB
+Transitioning to the digital realm, our focus shifts to online media exposure and its impact on political priorities. We explore the duration of individuals' stay on the top 10 US-political-news media websites with over 40 million viewers. These exposures are quantified by the media bias based on the  Ad Fontes Media data from 2023 (https://adfontesmedia.com/interactive-media-bias-chart/). Notably, we use following weights: Fox News (11.5), New York Post (8.95), Wall Street Journal (4.04), CBS News (-2.69), Forbes (-3.31), NPR (-4.40), NBC News (-5.92), CNN (-6.78), The New York Times (-7.96) and The Washington Post (-8.69).  
+
+*Plot 2.1: Political Beliefs*  
+
+Joining the  freshly sourced ‘media biases'  with survey data about partisan behavior show very clear, almost alarming results: There is a very strict correlation to party preference and voting behavior, both in Presidential Elections 2016 Midterms 2018.  Media consumption  is almost deterministic in extreme positions on the left and right. However, the plateau amongst moderate voters (between biases of -3 until +3 ) underline the importance of independent voters.  
+
+*Plot 2.2: Political Statements*
+
+The amalgamation of web exposure data with survey data reveals alarming correlations between Party Preference and Voting Behavior, both in Presidential Elections 2016 and Midterms 2018. The plot unveils a deterministic pattern in extreme positions, emphasizing the influence of media exposure. The positioning of 'American society needs to be radically restructured' versus 'The United States is the best country in which to live' is very different. The only agreement between all views is the disagreement with the statement "In general, the American political system works as it should".  But if we take the American way, this could also be a good consensus to start restructuring together.  
+
+
+
+
+Column {.tabset .tabset-fade} 
+----
+
+### Political Beliefs
+
+```{r include=FALSE}
+
+
+#first function (Thanks Minho ;-) 
+
+sum_duration <- function(target_domains =c('foxnews','cnn','nbc')){
+  target <- paste(target_domains,collapse = "|")
+  df <- tracking[grepl(target,tracking$domain),]
+  df$webdomains <- NA
+  for( i in seq_along(target_domains)) {
+    category <- target_domains[i]
+    df$webdomains[grepl(category,df$domain)] <- category
+  }
+  df |> 
+    group_by(personid,webdomains) |>
+    summarise(sum_duration = sum(duration))
+}
+
+#second function
+
+add_person_bias <- function(sum_duration, domain_bias_df) {
+  # Merge the sum_duration with domain_bias_df based on target_domain
+  merged_result <- merge(sum_duration, domain_bias_df, by.x = "webdomains", by.y = "webdomains", all.x = TRUE)
+  
+  # Calculate the person_bias as the sum of the products of target_domain_duration and domain_bias
+  merged_result$person_bias_total <- merged_result$sum_duration * merged_result$domain_bias
+  
+    # Aggregate the results to get the sum of person_bias for each personid
+  result1 <- aggregate(person_bias_total ~ personid, data = merged_result, sum, na.rm = TRUE)
+ 
+  # Aggregate the results to get the sum of person_bias for each personid
+  result2 <- aggregate(sum_duration ~ personid, data = merged_result, sum, na.rm = TRUE)
+  
+  result <- inner_join(result1, result2, by = "personid")
+  
+  result$person_bias <- result$person_bias_total / result$sum_duration
+  
+  return(result)
+}
+
+
+# source https://adfontesmedia.com/interactive-media-bias-chart/  from 2023
+# only TOP 10  Websites of most known US-political-news media bigger than 40.000.000 viewers 
+domain_bias_data <- data.frame(webdomains = c("foxnews", "nypost", "wsj", "cbsnews","forbes", "npr" , "nbcnews", "cnn", "nytimes", "washingtonpost" ), 
+                               domain_bias = c(11.5, 8.95, 4.04, -2.69, -3.31, -4.40,-5.92, -6.78, -7.96, -8.69))
+
+#applying the function 
+result_sum_duration <- sum_duration(domain_bias_data$webdomains)
+result_person_bias <- add_person_bias(result_sum_duration, domain_bias_data)
+analysis_online <- inner_join(result_person_bias, survey, by = "personid" )
+
+
+
+##### modify to democrats 0 , independent 0.5 and republicans 1 
+
+analysis_online$fav_party <- with(analysis_online,ifelse(partypref==1,0,
+                                                         ifelse(partypref==2,1,
+                                                                ifelse(partypref==3,0.5,NA))))
+analysis_online$midterms <- with(analysis_online,ifelse(vote_choice==1,0,
+                                                         ifelse(vote_choice==2,1,
+                                                                ifelse(vote_choice==3,0.5,NA))))
+analysis_online$midterms_vote <- with(analysis_online,ifelse(vote_choice==1,1,
+                                                      ifelse(vote_choice==2,0,
+                                                             ifelse(vote_choice==2,1,
+                                                                    ifelse(vote_choice==3,0.5,
+                                                                           ifelse(vote_choice==4,0.5,
+                                                                                  ifelse(vote_choice==5,0.5,
+                                                                                         ifelse(vote_choice== 6,0.5,NA))))))))
+analysis_online$president_vote <- with(analysis_online,ifelse(presvote16post==1,0,
+                                                            ifelse(presvote16post==2,1,
+                                                                   ifelse(presvote16post==3,0.5,NA))))
+analysis_online$congress_pref <- with(analysis_online,ifelse(congress_control_preference==1,0,
+                                                            ifelse(congress_control_preference==2,1,
+                                                                   ifelse(congress_control_preference==3,0.5,NA))))
+
+```
+
+```{r}
+selectInput(
+  inputId = "votes",
+  label = "Choose Party Preference / Voting",
+  choices = c( "Vote Midterms 2018" = 'midterms_vote',"Vote Presidential 2016"= 'president_vote',"Congress Control Preference"= 'congress_pref',"General Party Preference" = 'fav_party')
+)
+```
+```{r}
+ 
+renderPlot({
+  choices <- c('midterms_vote','president_vote','congress_pref','fav_party')
+  custom_alpha <- rep(0.2,4)
+  custom_alpha[which(choices==input$votes)] <- 0.8
+  analysis_online  %>% 
+  ggplot(aes(x = person_bias)) +
+   # Plot for vote_choice
+  geom_smooth(method = 'gam', aes(y = midterms_vote  ),show.legend = TRUE,color=alpha('blue',custom_alpha[1]),alpha=custom_alpha[1]) +
+    # Plot for presvote16post
+  geom_smooth(method = 'gam', aes(y = president_vote), show.legend = TRUE, color = alpha('red',custom_alpha[2]),alpha=custom_alpha[2]) +
+  # Plot for pimpeach
+  geom_smooth(method = 'gam', aes(y = congress_pref), show.legend = TRUE,color = alpha('purple',custom_alpha[3]), alpha = custom_alpha[3]) +
+  # Plot for partypref
+  geom_smooth(method = 'gam', aes(y = fav_party), color=alpha('green',custom_alpha[4]),alpha=custom_alpha[4],show.legend = TRUE) +
+    # Customize legend labels and position
+  labs( title = "Media Consumption and Political Belives  ",
+    x = "Media Bias (using tracked News Websites)",
+    y = "Mean Response (using Generalized Linear Model)",
+    color = "Party Preference / Voting",
+    caption = "Answering Options: <0> Democrat  <0.5> Independent <1> Republican "
+      ) +
+  theme(legend.position = "bottom")
+},height=500, width = 600) 
+```
+### Political Statements
+```{r}
+selectInput(
+  inputId = "media",
+  label = "Choose Statement about Political System",
+  choices = c( "Society is set up so that people usually get what they deserve." = 'option1',
+               "Everyone has a fair shot at wealth and happiness."= 'option2',
+               "The United States is the best country to live in."= 'option3',
+               "American society needs to be radically restructured." = 'option4',
+               "In general, the American political system operates as it should." = "option5",
+               "Most people can get ahead if they're willing to work hard." = "option6"
+               )
+)
+```
+
+```{r}
+renderPlot({
+  choices <- paste("option",1:6,sep="")
+  custom_alpha <- rep(0.2,6)
+  custom_alpha[which(choices==input$media)] <- 0.8
+ analysis_online |>
+  ggplot(aes(x = person_bias)) +
+  # Plot for system_deserve
+  geom_smooth( method = 'gam', data = . %>% filter(system_deserve < 6), aes(y = system_deserve/5), color=alpha('blue',custom_alpha[1]),alpha=custom_alpha[1],show.legend = TRUE) +
+    # Plot for system_shot
+  geom_smooth( method = 'gam', data = . %>% filter(system_shot < 6), aes(y = system_shot/5),color=alpha('red',custom_alpha[2]),alpha=custom_alpha[2], show.legend = TRUE) +
+    # Plot for system_usabest
+  geom_smooth( method = 'gam', data = . %>% filter(system_usabest < 6), aes(y = system_usabest/5),alpha=custom_alpha[3],color=alpha('purple',custom_alpha[3]), show.legend = TRUE) +
+    # Plot for system_restructure
+  geom_smooth( method = 'gam', data = . %>% filter(system_restructure < 6),aes(y = system_restructure/5), color=alpha('orange',custom_alpha[4]),alpha=custom_alpha[4] ,show.legend = TRUE) +
+    # Plot for system_political
+  geom_smooth( method = 'gam', data = . %>% filter(system_political < 6),aes(y = system_political/5), color=alpha('green',custom_alpha[5]),alpha=custom_alpha[5],show.legend = TRUE) +
+    # Plot for system_workhard
+  geom_smooth( method = 'gam', data = . %>% filter(system_workhard < 6), aes(y = system_workhard/5), color=alpha('black',custom_alpha[6]),alpha=custom_alpha[6],show.legend = TRUE) +
+    # Customize legend labels and position
+  labs(
+    title = "To what extent do you agree or disagree with the following statements?",
+    x = "Media Bias (using tracked News Websites)",
+    y = "Mean Response (using Generalized Linear Model)",
+    color = "belives",
+    caption = "Answering Options: <1/5> Strongly disagree <2/5> Somewhat disagree <3/5> Neither agree nor disagree <4/5> Somewhat agree <1> Strongly agree"
+  ) +
+  theme(legend.position = "bottom")
+ 
+},height=500, width = 600) 
+ 
+```
+
