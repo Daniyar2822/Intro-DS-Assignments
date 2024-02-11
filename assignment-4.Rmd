@@ -1,0 +1,188 @@
+---
+title: "Assignment 4 - Visualization"
+author: "Daniyar Imanaliev"
+date: "`r format(Sys.time(), '%B %d, %Y | %H:%M:%S | %Z')`"
+output:
+  html_document:
+    code_folding: show
+    df_print: paged
+    highlight: tango
+    number_sections: no
+    theme: cosmo
+    toc: no
+---
+  
+
+<style>
+div.answer {background-color:#f3f0ff; border-radius: 5px; padding: 20px;}
+</style>
+
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      eval = TRUE,
+                      error = FALSE,
+                      message = FALSE,
+                      warning = FALSE,
+                      comment = NA)
+```
+
+***
+
+```{r, include = T}
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(countrycode)
+library(scales)
+library(shadowtext)
+library(patchwork)
+library(pracma)
+library(ggpubr)
+library(cowplot)
+library(palmerpenguins)
+```
+
+
+<br>
+
+***
+
+### Task 1 - Principles of good data visualization
+
+Over at [Our World in Data](https://ourworldindata.org/grapher/child-mortality-vs-health-expenditure) you will find a chart illustrating child mortality vs. health expenditure, 2000 to 2019, across countries.
+
+Download the data and reproduce the plot as closely as possible using only the 2019 data (i.e. the bubble scatter plot that you see when you move the slider to the right) and log scales. Your plot does not have to be interactive and the colors don't have to exactly match those from the original plot as long as your plot remains well readable.
+  
+```{r}
+df <- read_csv('child-mortality-vs-health-expenditure.csv')
+#Preparing our data
+head(df)
+colnames(df)
+#Renaming columns for simpler work
+df <- df %>% rename("Country" = "Entity", 
+                    "Birthdeath" = "Observation value - Unit_of_measure: Deaths per 100 live births - Indicator: Under-five mortality rate - Sex: Both sexes - Wealth_quintile: All wealth quintiles",
+                    "Health_Exp" = "Current health expenditure per capita, PPP (current international $)",
+                    "Population" = "Population (historical estimates)")
+
+#Filtering data by 2019 
+tab2019 <-  filter(df, Year == "2019")
+  
+tab2019 <- tab2019[complete.cases(tab2019$Birthdeath, tab2019$Health_Exp), ]
+#Since data on continents are missing, I will use the CountryCode Package to fill out continent's data
+tab2019$Continent <- countrycode(tab2019$Country, "country.name", "continent")
+row_to_fill <- which(tab2019$Entity == "Micronesia (country)")
+tab2019$Continent[row_to_fill] <- "Oceania"
+#Removing NA from the data frame
+tab2019 <- tab2019[complete.cases(tab2019$Continent), ]
+
+#Creating a plot
+ggplot(tab2019, aes(x = Health_Exp, y = Birthdeath, color = Continent)) +
+  geom_point(color="black", shape=21, aes(size = Population, fill = Continent)) +
+  scale_x_log10(breaks = c(50, 100, 200, 500, 1000, 2000, 10000), labels = c("$50", "$100", "$200", "$500", "$1000", "$2000", "$10,000")) +
+  scale_y_log10(breaks = c(0.2, 0.5, 1, 2, 5, 10), labels = c("0.2%", "0.5%", "1%", "2%", "5%", "10%")) +
+  geom_shadowtext(label = tab2019$Country, size = 2.5, check_overlap = TRUE, nudge_y = 0.05, aes(color = Continent), bg.colour='white') +
+  scale_size(name = "Population", range = c(1, 10), labels = label_number_si()) +
+  labs(title = "Child mortality vs. health expenditure, 2019", subtitle = str_wrap("Healthcare expenditure per capita is measured in current international-$, which adjusts for price differences between countries. Under-five mortality is the share of newborns who die before reaching the age of five"), x = "Current health expenditure per capita, PPP", y = "Child mortality", caption = str_wrap("Data source: United Nations Inter-agency Group for Child Mortality Estimation 2023; World Health Organization via World Bank")) +
+  theme(plot.title = element_text(size = 15), plot.subtitle = element_text(size = 10))
+  
+
+```
+
+<br>
+
+***
+
+### Task 2 - IMDb small multiples
+
+The file [`imdb_series_df.csv`](https://github.com/intro-to-data-science-23/assignment-4-setup/blob/main/imdb_series_df.csv.zip) contains a data set on rating information on series and episodes from the InternetMovieDatabase. Use these data to create a small multiples plot that illustrates a relationship of your choice. You can work with the entire dataset or a subset. Your plot should adhere to the principles of good design. In addition to the visualization, provide a sound discussion (10 sentences or less) of what the plot might tell us.
+
+*Note:* The data binary is fairly large (~93MB). It makes sense to download it first to your local drive and then import it into R. However, make sure that the file is not synced to GitHub using `.gitignore`.
+
+```{r}
+df2 <- read_csv("imdb_series_df.csv")
+#Reviewing data 
+head(df2)
+
+glimpse(df2)
+length(unique(df2$series_title))
+
+#Creating subset for the last 10 year time period. I will exclude an extreme values, i.e. duration more than 120 min as well as sport and news shows since they may not have a specific time limit
+tv1 <- df2 %>%  
+  filter(runtime_mins <= 120, !genres %in% c("Sport", "\\N"), start_year >= 2013 & start_year <= 2022) %>% 
+  drop_na()
+
+
+# density_values <- density(tv1$runtime_mins)
+# peaks <- findpeaks(tv1$runtime_mins, npeaks = 2)
+
+ggplot(tv1, aes(x=runtime_mins)) +
+geom_density(adjust=1.5, fill = "#56B4E9") +
+facet_wrap(~start_year) +
+theme(
+  legend.position="none",
+  panel.spacing = unit(0.1, "lines"),
+  axis.ticks.x=element_blank() 
+) + 
+  labs(title = "TV Series Runtime, Density Plot", subtitle = str_wrap("The density plot shows density of runtime of TV series for the period from 2013 to 2022"),  x = "Runtime, min", y = "Density", caption = str_wrap("Data Source:InternetMovieDatabase. This plot displays only TV shows with duration up to 120 min, news shows and sporting events are excluded from the data")) +
+  geom_vline(linetype = 2, color = "red", xintercept = c(23, 44), linewidth=0.5) 
+  
+
+
+```
+This density plot shows duration of TV series/shows within 9 years from 2013 to 2021. The density plots are strongly bimodal, i.e. each contains two peaks: first peak is approximately 25 min duration and second peak is 45 min duration.
+It means that most of TV series have duration 25 or 45 min. It can be explained that TV slots are provided by 30 and 60 minutes, but advertising blocks also should be taken into account, therefore TV shows usually can have running time of 25 minutes of duration and 5 minutes for ads, or 45 minites of show and 15 min for commercials.
+
+<br>
+
+
+***
+
+### Task 3 - Principles of good data visualization
+
+On [slide 75 of the lecture slides ("Dos and "Don'ts")](https://raw.githack.com/intro-to-data-science-22/lectures/main/09-visualization/09-visualization.html#85) you find a linked list of 20 statements expressing principles of good data visualization. Follow the links to learn more about them. Then, come up with another principle of good data visualization **that is not listed on the slide** and illustrate it following the instructions below: 
+
+  (i) Create a two-panel plot. The left panel shows a poorly designed plot (e.g., a 3D plot), the right panel shows a well-designed alternative using the same data. You are free to use whatever data you want to make your point.
+  (ii) The title of the plot should be the name of the principle, e.g. "**Don't go 3D.**"
+  (iii) The bottom of the plot should provide a note that explains, in a few sentences, the principle illustrated in the plot and how the right is an improved over the left version.
+  (iv) Embed the plot in your `.Rmd` but also provide it as a `.png` or `.pdf` in your submission repo.
+
+
+```{r}
+# I chose the principle: Avoid line drawings
+# Drawing first plot - bad example
+p1 <- ggplot(penguins, aes(x=body_mass_g, linetype = island)) +
+geom_density()
+
+#Drawing good example
+# Creating custom colors for our 
+custom_colors <- c("green", "red", "deepskyblue")
+
+p2 <- ggplot(penguins, aes(x=body_mass_g, fill = island)) +
+geom_density(alpha = 0.2) +
+scale_fill_manual(values = custom_colors)
+#Combining them 
+p3 <- plot_grid(p1, p2)
+#creating title of our combined plot 
+title <- ggdraw() + 
+  draw_label(
+    "Avoid line drawings", 
+    fontface='bold',
+    x = 0,
+    hjust = 0
+  ) +
+  theme(
+    plot.margin = margin(0, 0, 0, 7)
+  )
+#Using function plot grid from cowplot package creating combined plot
+fig <- plot_grid(title, p3, ncol=1, rel_heights = c(0.1, 1))
+# Creating annotation
+fig <- annotate_figure(fig, bottom= text_grob("Avoid Line Drawing principle means that whenever possible, visualize your data with solid colored shapes \n rather than with lines that outline those shapes. Solid shapes are more easily perceived \n as coherent objects are less likely to create visual artifacts or optical illusions and do more \n immediately convey amounts than do outlines.", color = "blue", face = "italic", size = 10))
+#Saving our file 
+ggsave("Task3.pdf")
+```
+
+
+```{r}
+fig
+```
